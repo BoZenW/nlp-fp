@@ -47,9 +47,12 @@ def main():
     argp.add_argument('--max_eval_samples', type=int, default=None,
                       help='Limit the number of examples to evaluate on.')
     
+    #argp.add_argument('--remove_unused_columns', action="store_false", help="as described")
+    
     #argp.add_argument('--save_steps', type=int, default=1000, help='checkpoint freq.')
 
     training_args, args = argp.parse_args_into_dataclasses()
+    #print('training args: ', training_args)
 
     # Dataset selection
     # IMPORTANT: this code path allows you to load custom datasets different from the standard SQuAD or SNLI ones.
@@ -60,7 +63,7 @@ def main():
         dataset_id = None
         # Load from local json/jsonl file
         dataset = datasets.load_dataset('json', data_files=args.dataset)
-        #dataset = dataset.map(process_squad, batched=True, remove_columns=["paragraphs"])
+        dataset = dataset.map(process_squad, batched=True, remove_columns=["paragraphs"])
         # By default, the "json" dataset loader places all examples in the train split,
         # so if we want to use a jsonl file for evaluation we need to get the "train" split
         # from the loaded dataset
@@ -73,6 +76,7 @@ def main():
         eval_split = 'validation_matched' if dataset_id == ('glue', 'mnli') else 'validation'
         # Load the raw data
         dataset = datasets.load_dataset(*dataset_id)
+        #dataset = dataset.map(process_squad_, batched=True)
     
     # NLI models need to have the output label count specified (label 0 is "entailed", 1 is "neutral", and 2 is "contradiction")
     task_kwargs = {'num_labels': 3} if args.task == 'nli' else {}
@@ -236,6 +240,27 @@ def process_squad(articles):
                     "text": [answer["text"] for answer in qa["answers"]],
                 })
 
+
+    return out
+
+def process_squad_(articles):
+    out = {
+        "id": [],
+        "title": [],
+        "context": [],
+        "question": [],
+        "answers": [],
+    }
+    print('article: ', articles.keys)
+    count=1
+    for title in articles:
+        out["id"].append(count)
+        count+=1
+        #out["title"].append(item["title"])
+        #out["context"].append(item["context"])
+        #out["question"].append(item["question"])
+        #out["answers"].append({"answer_start": [answer["answer_start"] for answer in qa["answers"]],
+        #            "text": [answer["text"] for answer in item["answers"]],})
 
     return out
 

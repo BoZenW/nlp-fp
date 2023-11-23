@@ -85,8 +85,8 @@ def prepare_train_dataset_qa(examples, tokenizer, max_seq_length=None):
         answers = examples["answers"][sample_index]
 
         #------------DIFF-----------------------------------------------------
+        #tokenized_examples["example_id"].append(tokenized_examples["input_ids"][i])
         tokenized_examples["example_id"].append(examples["id"][sample_index])
-        print('example id: ', examples["id"][sample_index])
 
         if len(answers["answer_start"]) == 0:
             tokenized_examples["start_positions"].append(cls_index)
@@ -292,189 +292,7 @@ class MyCallback(TrainerCallback):
         self.trainer_class.cur_train_end_golds = []
 
 
-# Adapted from https://github.com/huggingface/transformers/blob/master/examples/pytorch/question-answering/trainer_qa.py
-class _QuestionAnsweringTrainer_(Trainer):
-    def __init__(self, *args, eval_examples=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.eval_examples = eval_examples
-        # self.args = args
-        # self.cur_num_epoch = 0
-        self.cur_train_ids = []
-        self.cur_train_start_logits = []
-        self.cur_train_start_golds = []
-        self.cur_train_end_logits = []
-        self.cur_train_end_golds = []
-
-    def train_dynamic(self, output_dir, epoch, train_ids, train_logits, train_golds):
-        log_training_dynamics(output_dir=output_dir,
-                              epoch=epoch,
-                              train_ids=list(train_ids),
-                              train_logits=list(train_logits),
-                              train_golds=list(train_golds))
-
-    def compute_loss(self, model, inputs, return_outputs=False):
-        """
-        How the loss is computed by Trainer. By default, all models return the loss in the first element.
-
-        Subclass and override for custom behavior.
-        """
-        print("\n\n*********************** before inputs:", inputs, "\n\n")
-        print('input keys', inputs.keys)
-        old_inputs = inputs.copy()
-        #del inputs['example_id']
-        print("\n\n*********************** after inputs:", inputs, "\n\n")
-
-        if self.label_smoother is not None and "labels" in inputs:
-            labels = inputs.pop("labels")
-        else:
-            labels = None
-
-        outputs = model(**inputs)
-        # Save past state if it exists
-        # TODO: this needs to be fixed and made cleaner later.
-        if self.args.past_index >= 0:
-            self._past = outputs[self.args.past_index]
-
-        if labels is not None:
-            loss = self.label_smoother(outputs, labels)
-        else:
-            # We don't use .loss here since the model may return tuples instead of ModelOutput.
-            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
-
-        # track the info
-        # print("\n\n*********************** inputs:", inputs.shape, ", outputs:", outputs.shape, ", labels:", labels, "\n\n")
-        # print("\n\n*********************** labels:", labels, "\n\n")
-        print("\n\n*********************** after inputs:", inputs, "\n\n")
-        print("\n\n*********************** outputs:", outputs, "\n\n")
-        # print("*********************** inputs['end_positions']:", inputs['end_positions'].shape)
-        # print("*********************** inputs['start_positions']:", inputs['start_positions'].shape)
-        # print("*********************** inputs['input_ids']:", inputs['input_ids'].shape)
-        # print("*********************** inputs['token_type_ids']:", inputs['token_type_ids'].shape)
-        # print("*********************** inputs['attention_mask']:", inputs['attention_mask'].shape)
-        # print("*********************** outputs['start_logits']:", outputs['start_logits'].shape)
-        # print("*********************** outputs['end_logits']:", outputs['end_logits'].shape)
-        # old_inputs['end_positions']
-        # old_inputs['start_positions']
-        # old_inputs['input_ids']
-        # old_inputs['token_type_ids']
-        # old_inputs['attention_mask']
-        # old_inputs['example_id']
-
-        # outputs['start_logits']
-        # outputs['end_logits']
-
-        self.cur_train_ids.append(old_inputs['example_id'].detach().cpu().numpy())
-        #self.cur_train_ids.append(old_inputs['input_ids'].detach().cpu().numpy())
-        self.cur_train_start_logits.append(outputs['start_logits'].detach().cpu().numpy())
-        self.cur_train_start_golds.append(old_inputs['start_positions'].detach().cpu().numpy())
-        self.cur_train_end_logits.append(outputs['end_logits'].detach().cpu().numpy())
-        self.cur_train_end_golds.append(old_inputs['end_positions'].detach().cpu().numpy())
-
-        return (loss, outputs) if return_outputs else loss
-
-    def get_train_dataloader(self) -> DataLoader:
-        """
-        Returns the training :class:`~torch.utils.data.DataLoader`.
-
-        Will use no sampler if :obj:`self.train_dataset` does not implement :obj:`__len__`, a random sampler (adapted
-        to distributed training if necessary) otherwise.
-
-        Subclass and override this method if you want to inject some custom behavior.
-        """
-        if self.train_dataset is None:
-            raise ValueError("Trainer: training requires a train_dataset.")
-
-        train_dataset = self.train_dataset
-        # print("\n\n\n***************** train_dataset 1:", train_dataset)
-        # if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
-        #     train_dataset = self._remove_unused_columns(train_dataset, description="training")
-
-        if isinstance(train_dataset, torch.utils.data.IterableDataset):
-            if self.args.world_size > 1:
-                train_dataset = IterableDatasetShard(
-                    train_dataset,
-                    batch_size=self.args.train_batch_size,
-                    drop_last=self.args.dataloader_drop_last,
-                    num_processes=self.args.world_size,
-                    process_index=self.args.process_index,
-                )
-
-            return DataLoader(
-                train_dataset,
-                batch_size=self.args.train_batch_size,
-                collate_fn=self.data_collator,
-                num_workers=self.args.dataloader_num_workers,
-                pin_memory=self.args.dataloader_pin_memory,
-            )
-
-        train_sampler = self._get_train_sampler()
-
-        return DataLoader(
-            train_dataset,
-            batch_size=self.args.train_batch_size,
-            sampler=train_sampler,
-            collate_fn=self.data_collator,
-            drop_last=self.args.dataloader_drop_last,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=self.args.dataloader_pin_memory,
-        )
-
-    def evaluate(self,
-                 eval_dataset=None,  # denotes the dataset after mapping
-                 eval_examples=None,  # denotes the raw dataset
-                 ignore_keys=None,  # keys to be ignored in dataset
-                 metric_key_prefix: str = "eval"
-                 ):
-        eval_dataset = self.eval_dataset if eval_dataset is None else eval_dataset
-        eval_dataloader = self.get_eval_dataloader(eval_dataset)
-        eval_examples = self.eval_examples if eval_examples is None else eval_examples
-
-        # Temporarily disable metric computation, we will do it in the loop here.
-        compute_metrics = self.compute_metrics
-        self.compute_metrics = None
-        try:
-            # compute the raw predictions (start_logits and end_logits)
-            output = self.evaluation_loop(
-                eval_dataloader,
-                description="Evaluation",
-                # No point gathering the predictions if there are no metrics, otherwise we defer to
-                # self.args.prediction_loss_only
-                prediction_loss_only=True if compute_metrics is None else None,
-                ignore_keys=ignore_keys,
-            )
-        finally:
-            self.compute_metrics = compute_metrics
-
-        if self.compute_metrics is not None:
-            # post process the raw predictions to get the final prediction
-            # (from start_logits, end_logits to an answer string)
-            eval_preds = postprocess_qa_predictions(eval_examples,
-                                                    eval_dataset,
-                                                    output.predictions)
-            formatted_predictions = [{"id": k, "prediction_text": v}
-                                     for k, v in eval_preds.items()]
-            references = [{"id": ex["id"], "answers": ex['answers']}
-                          for ex in eval_examples]
-
-            # compute the metrics according to the predictions and references
-            metrics = self.compute_metrics(
-                EvalPrediction(predictions=formatted_predictions,
-                               label_ids=references)
-            )
-
-            # Prefix all keys with metric_key_prefix + '_'
-            for key in list(metrics.keys()):
-                if not key.startswith(f"{metric_key_prefix}_"):
-                    metrics[f"{metric_key_prefix}_{key}"] = metrics.pop(key)
-
-            self.log(metrics)
-        else:
-            metrics = {}
-
-        self.control = self.callback_handler.on_evaluate(self.args, self.state,
-                                                         self.control, metrics)
-        return metrics
-    
+# Adapted from https://github.com/huggingface/transformers/blob/master/examples/pytorch/question-answering/trainer_qa.py    
 class _QuestionAnsweringTrainer(Trainer):
     def __init__(self, *args, eval_examples=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -538,7 +356,7 @@ class _QuestionAnsweringTrainer(Trainer):
 
 
 class QuestionAnsweringTrainer(Trainer):
-    def __init__(self, *args, eval_examples=None, **kwargs):
+    def __init__(self, *args, eval_examples=None, tokenizer,**kwargs):
         super().__init__(*args, **kwargs)
         self.eval_examples = eval_examples
         # self.args = args
@@ -548,6 +366,12 @@ class QuestionAnsweringTrainer(Trainer):
         self.cur_train_start_golds = []
         self.cur_train_end_logits = []
         self.cur_train_end_golds = []
+        self.tokenizer = tokenizer
+
+        # print("\n\n\n***************** train_dataset_featurized:", self.train_dataset.features)
+        # self.train_dataset.set_format(type=self.train_dataset.format["type"], columns=list(self.train_dataset.features.keys()))
+        # print(self.train_dataset[0])
+        # print('data collator: ', self.data_collator)
 
     def train_dynamic(self, output_dir, epoch, train_ids, train_logits, train_golds):
         log_training_dynamics(output_dir=output_dir,
@@ -564,9 +388,10 @@ class QuestionAnsweringTrainer(Trainer):
         """
         # print("\n\n*********************** before inputs:", inputs, "\n\n")
         #print('input id', inputs['example_id'])
-        print('input keys', inputs.keys)
+        #print('input keys', inputs.keys)
         old_inputs = inputs.copy()
-        #del inputs['example_id']
+        # print('inputs: ', inputs)
+        del inputs['example_id']
         # print("\n\n*********************** after inputs:", inputs, "\n\n")
 
         if self.label_smoother is not None and "labels" in inputs:
@@ -600,7 +425,7 @@ class QuestionAnsweringTrainer(Trainer):
         # print("*********************** outputs['end_logits']:", outputs['end_logits'].shape)
 
         #self.cur_train_ids.append(old_inputs['example_id'].detach().cpu().numpy())
-        #self.cur_train_ids.append(old_inputs['input_ids'].detach().cpu().numpy())
+        self.cur_train_ids.append(old_inputs['example_id'])
         self.cur_train_start_logits.append(outputs['start_logits'].detach().cpu().numpy())
         self.cur_train_start_golds.append(old_inputs['start_positions'].detach().cpu().numpy())
         self.cur_train_end_logits.append(outputs['end_logits'].detach().cpu().numpy())
@@ -608,7 +433,44 @@ class QuestionAnsweringTrainer(Trainer):
 
         return (loss, outputs) if return_outputs else loss
 
+    def _remove_unused_columns(self, dataset, description):
+        return dataset
+        
+    def get_train_dataloader(self) -> DataLoader:
+        """
+        Returns the training [`~torch.utils.data.DataLoader`].
 
+        Will use no sampler if `train_dataset` does not implement `__len__`, a random sampler (adapted to distributed
+        training if necessary) otherwise.
+
+        Subclass and override this method if you want to inject some custom behavior.
+        """
+        if self.train_dataset is None:
+            raise ValueError("Trainer: training requires a train_dataset.")
+
+        train_dataset = self.train_dataset
+        #data_collator = self.data_collator
+        data_collator = torch_default_data_collator
+        #if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
+        #    train_dataset = self._remove_unused_columns(train_dataset, description="training")
+        #else:
+        #    data_collator = self._get_collator_with_removed_columns(data_collator, description="training")
+
+        dataloader_params = {
+            #"batch_size": 1,
+            "batch_size": self._train_batch_size,
+            "collate_fn": data_collator,
+            "num_workers": self.args.dataloader_num_workers,
+            "pin_memory": self.args.dataloader_pin_memory,
+        }
+
+        #if not isinstance(train_dataset, torch.utils.data.IterableDataset):
+        #    dataloader_params["sampler"] = self._get_train_sampler()
+        #    dataloader_params["drop_last"] = self.args.dataloader_drop_last
+        #    dataloader_params["worker_init_fn"] = seed_worker
+
+        return self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
+    
     def evaluate(self,
                  eval_dataset=None,  # denotes the dataset after mapping
                  eval_examples=None,  # denotes the raw dataset
@@ -664,3 +526,42 @@ class QuestionAnsweringTrainer(Trainer):
         self.control = self.callback_handler.on_evaluate(self.args, self.state,
                                                          self.control, metrics)
         return metrics
+    
+
+def torch_default_data_collator(features):
+    import torch
+
+    #if not isinstance(features[0], Mapping):
+    #    features = [vars(f) for f in features]
+    first = features[0]
+    batch = {}
+
+    # Special handling for labels.
+    # Ensure that tensor is created with the correct type
+    # (it should be automatically the case, but let's make sure of it.)
+    if "label" in first and first["label"] is not None:
+        label = first["label"].item() if isinstance(first["label"], torch.Tensor) else first["label"]
+        dtype = torch.long if isinstance(label, int) else torch.float
+        batch["labels"] = torch.tensor([f["label"] for f in features], dtype=dtype)
+    elif "label_ids" in first and first["label_ids"] is not None:
+        if isinstance(first["label_ids"], torch.Tensor):
+            batch["labels"] = torch.stack([f["label_ids"] for f in features])
+        else:
+            dtype = torch.long if type(first["label_ids"][0]) is int else torch.float
+            batch["labels"] = torch.tensor([f["label_ids"] for f in features], dtype=dtype)
+
+    # Handling of all other possible keys.
+    # Again, we will use the first element to figure out which key/values are not None for this model.
+    for k, v in first.items():
+        #print('k: ', k, 'v: ', v)
+        if k not in ("label", "label_ids") and v is not None and not isinstance(v, str):
+            if isinstance(v, torch.Tensor):
+                batch[k] = torch.stack([f[k] for f in features])
+            elif isinstance(v, np.ndarray):
+                batch[k] = torch.tensor(np.stack([f[k] for f in features]))
+            else:
+                batch[k] = torch.tensor([f[k] for f in features])
+        if isinstance(v, str):
+            batch[k] = [f[k] for f in features]
+
+    return batch
