@@ -62,20 +62,28 @@ def main():
     if args.dataset.endswith('.json') or args.dataset.endswith('.jsonl'):
         dataset_id = None
         # Load from local json/jsonl file
-        dataset = datasets.load_dataset('json', data_files=args.dataset)
-        dataset = dataset.map(process_squad, batched=True, remove_columns=["paragraphs"])
+        #dataset = datasets.load_dataset('json', data_files=args.dataset)
+        #dataset = dataset.map(process_squad_, batched=True, remove_columns=["paragraphs"])
+        #base_url = "https://rajpurkar.github.io/SQuAD-explorer/dataset/"
+        #dataset = datasets.load_dataset("json", data_files={"train": base_url + "train-v1.1.json", "validation": base_url + "dev-v1.1.json"}, field="data")
+        dataset = datasets.load_dataset("csv", data_files={"train": "./datasets/train.csv", "validation": "./datasets/validation.csv"})
+        dataset = dataset.map(process_squad_, batched=True)
         # By default, the "json" dataset loader places all examples in the train split,
         # so if we want to use a jsonl file for evaluation we need to get the "train" split
         # from the loaded dataset
         eval_split = 'train'
     else:
-        default_datasets = {'qa': ('squad',), 'nli': ('snli',)}
+        #default_datasets = {'qa': ('squad',), 'nli': ('snli',)}
+        default_datasets = {'qa': ('squad_adversarial',), 'nli': ('snli',)}
         dataset_id = tuple(args.dataset.split(':')) if args.dataset is not None else \
             default_datasets[args.task]
+        #dataset_id = ['squad_adversarial']
         # MNLI has two validation splits (one with matched domains and one with mismatched domains). Most datasets just have one "validation" split
         eval_split = 'validation_matched' if dataset_id == ('glue', 'mnli') else 'validation'
         # Load the raw data
-        dataset = datasets.load_dataset(*dataset_id)
+        #dataset = datasets.load_dataset(*dataset_id)
+        #dataset = datasets.load_dataset('squad_adversarial','AddSent')
+        dataset = datasets.load_dataset('squad_v2')
         #dataset = dataset.map(process_squad_, batched=True)
     
     # NLI models need to have the output label count specified (label 0 is "entailed", 1 is "neutral", and 2 is "contradiction")
@@ -111,6 +119,7 @@ def main():
     eval_dataset_featurized = None
     if training_args.do_train:
         train_dataset = dataset['train']
+        #train_dataset = dataset # squad_adversarial
         if args.max_train_samples:
             train_dataset = train_dataset.select(range(args.max_train_samples))
         train_dataset_featurized = train_dataset.map(
@@ -251,10 +260,12 @@ def process_squad_(articles):
         "question": [],
         "answers": [],
     }
-    print('article: ', articles.keys)
+    #print('article: ', articles)
+    print('len ', len(articles))
     count=1
     for title in articles:
-        out["id"].append(count)
+        #out["id"].append(count)
+        out["id"].append(id)
         count+=1
         #out["title"].append(item["title"])
         #out["context"].append(item["context"])

@@ -44,6 +44,7 @@ def compute_accuracy(eval_preds: EvalPrediction):
 # and finding the right offsets for the answer spans in the tokenized context (to use as labels).
 # Adapted from https://github.com/huggingface/transformers/blob/master/examples/pytorch/question-answering/run_qa.py
 def prepare_train_dataset_qa(examples, tokenizer, max_seq_length=None):
+    #print('example: ', examples)
     questions = [q.lstrip() for q in examples["question"]]
     max_seq_length = tokenizer.model_max_length
     # tokenize both questions and the corresponding context
@@ -160,8 +161,8 @@ def prepare_validation_dataset_qa(examples, tokenizer):
         # Set to None the offset_mapping that are not part of the context so it's easy to determine if a token
         # position is part of the context or not.
         tokenized_examples["offset_mapping"][i] = [
-            (o if sequence_ids[k] == context_index else None)
-            for k, o in enumerate(tokenized_examples["offset_mapping"][i])
+           (o if sequence_ids[k] == context_index else None)
+           for k, o in enumerate(tokenized_examples["offset_mapping"][i])
         ]
 
     return tokenized_examples
@@ -471,6 +472,42 @@ class QuestionAnsweringTrainer(Trainer):
 
         return self.accelerator.prepare(DataLoader(train_dataset, **dataloader_params))
     
+    def get_eval_dataloader(self, eval_dataset) -> DataLoader:
+        """
+        Returns the training [`~torch.utils.data.DataLoader`].
+
+        Will use no sampler if `train_dataset` does not implement `__len__`, a random sampler (adapted to distributed
+        training if necessary) otherwise.
+
+        Subclass and override this method if you want to inject some custom behavior.
+        """
+        if self.eval_dataset is None:
+            raise ValueError("Trainer: training requires a train_dataset.")
+
+        eval_dataset = self.eval_dataset
+        eval_dataset = eval_dataset.remove_columns(["offset_mapping", "example_id"])
+        #data_collator = self.data_collator
+        data_collator = torch_default_data_collator
+        #if is_datasets_available() and isinstance(train_dataset, datasets.Dataset):
+        #    train_dataset = self._remove_unused_columns(train_dataset, description="training")
+        #else:
+        #    data_collator = self._get_collator_with_removed_columns(data_collator, description="training")
+
+        dataloader_params = {
+            #"batch_size": 1,
+            #"batch_size": self._train_batch_size,
+            "collate_fn": data_collator,
+            "num_workers": self.args.dataloader_num_workers,
+            "pin_memory": self.args.dataloader_pin_memory,
+        }
+
+        #if not isinstance(train_dataset, torch.utils.data.IterableDataset):
+        #    dataloader_params["sampler"] = self._get_train_sampler()
+        #    dataloader_params["drop_last"] = self.args.dataloader_drop_last
+        #    dataloader_params["worker_init_fn"] = seed_worker
+
+        return self.accelerator.prepare(DataLoader(eval_dataset, **dataloader_params))
+    
     def evaluate(self,
                  eval_dataset=None,  # denotes the dataset after mapping
                  eval_examples=None,  # denotes the raw dataset
@@ -553,13 +590,13 @@ def torch_default_data_collator(features):
     # Handling of all other possible keys.
     # Again, we will use the first element to figure out which key/values are not None for this model.
     for k, v in first.items():
-        #print('k: ', k, 'v: ', v)
         if k not in ("label", "label_ids") and v is not None and not isinstance(v, str):
             if isinstance(v, torch.Tensor):
                 batch[k] = torch.stack([f[k] for f in features])
             elif isinstance(v, np.ndarray):
                 batch[k] = torch.tensor(np.stack([f[k] for f in features]))
             else:
+                #print('k: ', k, 'v: ', v)
                 batch[k] = torch.tensor([f[k] for f in features])
         if isinstance(v, str):
             batch[k] = [f[k] for f in features]
