@@ -2,6 +2,9 @@
 
 Project by Kaj Bostrom, Jifan Chen, and Greg Durrett. Code by Kaj Bostrom and Jifan Chen.
 
+- This repository is a fork from the original final project starter code located at this [repo](https://github.com/gregdurrett/fp-dataset-artifacts).
+- We incorporate the data cartography methods and codes from the [Dataset Cartography: Mapping and Diagnosing Datasets with Training Dynamics](https://github.com/allenai/cartography) repository.
+
 ## Getting Started
 You'll need Python >= 3.6 to run the code in this repo.
 
