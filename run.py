@@ -66,14 +66,18 @@ def main():
         #dataset = dataset.map(process_squad_, batched=True, remove_columns=["paragraphs"])
         #base_url = "https://rajpurkar.github.io/SQuAD-explorer/dataset/"
         #dataset = datasets.load_dataset("json", data_files={"train": base_url + "train-v1.1.json", "validation": base_url + "dev-v1.1.json"}, field="data")
-        dataset = datasets.load_dataset("csv", data_files={"train": "./datasets/train.csv", "validation": "./datasets/validation.csv"})
-        dataset = dataset.map(process_squad_, batched=True)
+        #dataset = datasets.load_dataset("csv", data_files={"train": "./datasets/train.csv", "validation": "./datasets/validation.csv"})
+        global hard_id
+        hard_id = read_jsonl('./squad_easy_ambg_0.7.jsonl')
+        #print('hard list: ', hard_id)
+        dataset = datasets.load_dataset('squad')
+        dataset = dataset.map(process_hard_, batched=True)
         # By default, the "json" dataset loader places all examples in the train split,
         # so if we want to use a jsonl file for evaluation we need to get the "train" split
         # from the loaded dataset
         eval_split = 'train'
     else:
-        #default_datasets = {'qa': ('squad',), 'nli': ('snli',)}
+        # default_datasets = {'qa': ('squad',), 'nli': ('snli',)}
         default_datasets = {'qa': ('squad_adversarial',), 'nli': ('snli',)}
         dataset_id = tuple(args.dataset.split(':')) if args.dataset is not None else \
             default_datasets[args.task]
@@ -81,10 +85,13 @@ def main():
         # MNLI has two validation splits (one with matched domains and one with mismatched domains). Most datasets just have one "validation" split
         eval_split = 'validation_matched' if dataset_id == ('glue', 'mnli') else 'validation'
         # Load the raw data
-        #dataset = datasets.load_dataset(*dataset_id)
+        # dataset = datasets.load_dataset(*dataset_id)
         #dataset = datasets.load_dataset('squad_adversarial','AddSent')
+        # dataset = datasets.load_dataset('squad_adversarial','AddOneSent')
         dataset = datasets.load_dataset('squad_v2')
         #dataset = dataset.map(process_squad_, batched=True)
+
+    #print('squad adv: ', dataset['validation'][0])
     
     # NLI models need to have the output label count specified (label 0 is "entailed", 1 is "neutral", and 2 is "contradiction")
     task_kwargs = {'num_labels': 3} if args.task == 'nli' else {}
@@ -119,7 +126,6 @@ def main():
     eval_dataset_featurized = None
     if training_args.do_train:
         train_dataset = dataset['train']
-        #train_dataset = dataset # squad_adversarial
         if args.max_train_samples:
             train_dataset = train_dataset.select(range(args.max_train_samples))
         train_dataset_featurized = train_dataset.map(
@@ -132,8 +138,10 @@ def main():
         print("\n\n\n***************** train_dataset_featurized:", train_dataset_featurized)
     if training_args.do_eval:
         eval_dataset = dataset[eval_split]
+        # eval_dataset = dataset['validation']
         if args.max_eval_samples:
             eval_dataset = eval_dataset.select(range(args.max_eval_samples))
+        #eval_dataset_featurized  = eval_dataset.map(prepare_eval_dataset, remove_columns=eval_dataset.column_names)
         eval_dataset_featurized = eval_dataset.map(
             prepare_eval_dataset,
             batched=True,
@@ -183,6 +191,7 @@ def main():
     # Train and/or evaluate
     if training_args.do_train:
         trainer.train()
+        # trainer.train(resume_from_checkpoint=True)
         trainer.save_model()
         # If you want to customize the way the loss is computed, you should subclass Trainer and override the "compute_loss"
         # method (see https://huggingface.co/transformers/_modules/transformers/trainer.html#Trainer.compute_loss).
@@ -226,7 +235,7 @@ def main():
                     f.write('\n')
 
 
-def process_squad(articles):
+def process_hard_(articles):
     out = {
         "id": [],
         "title": [],
@@ -234,46 +243,37 @@ def process_squad(articles):
         "question": [],
         "answers": [],
     }
+    # print('article: ', articles)
+    # print('len ', len(articles['id']))
+    # print('hard id: ', [str(int(item)) for item in hard_id])
+    index = []
+    for id in hard_id:
+        #print('id to search: ', id)
+        if id in articles['id']:
+            index.append(articles['id'].index(id))
+    # print('hard index: ', index)
     count=1
-    for title, paragraphs in zip(articles["title"], articles["paragraphs"]):
-        for paragraph in paragraphs:
-            for qa in paragraph["qas"]:
-                # out["id"].append(qa["id"])
-                out["id"].append(count)
-                count+=1
-                out["title"].append(title)
-                out["context"].append(paragraph["context"])
-                out["question"].append(qa["question"])
-                out["answers"].append({
-                    "answer_start": [answer["answer_start"] for answer in qa["answers"]],
-                    "text": [answer["text"] for answer in qa["answers"]],
-                })
+    for i in index:
+        out["id"].append(articles['id'][i])
+        out["title"].append(articles['title'][i])
+        out["context"].append(articles['context'][i])
+        out["question"].append(articles['question'][i])
+        out["answers"].append(articles['answers'][i])
 
+    # print('len of out: ', len(out['id']))
 
     return out
 
-def process_squad_(articles):
-    out = {
-        "id": [],
-        "title": [],
-        "context": [],
-        "question": [],
-        "answers": [],
-    }
-    #print('article: ', articles)
-    print('len ', len(articles))
-    count=1
-    for title in articles:
-        #out["id"].append(count)
-        out["id"].append(id)
-        count+=1
-        #out["title"].append(item["title"])
-        #out["context"].append(item["context"])
-        #out["question"].append(item["question"])
-        #out["answers"].append({"answer_start": [answer["answer_start"] for answer in qa["answers"]],
-        #            "text": [answer["text"] for answer in item["answers"]],})
-
-    return out
+def read_jsonl(file_path):
+    data = []
+    with open(file_path, 'r', encoding='utf-8') as file:
+        for line in file:
+            #print('line: ', line)
+            # Load each line as a JSON object
+            json_data = json.loads(line.strip())
+            #print('keys: ', json_data.keys())
+            data.append(json_data['guid'])
+    return data
 
 
 if __name__ == "__main__":

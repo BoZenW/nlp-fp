@@ -235,54 +235,6 @@ def main():
                     f.write('\n')
 
 
-def process_squad(articles):
-    out = {
-        "id": [],
-        "title": [],
-        "context": [],
-        "question": [],
-        "answers": [],
-    }
-    count=1
-    for title, paragraphs in zip(articles["title"], articles["paragraphs"]):
-        for paragraph in paragraphs:
-            for qa in paragraph["qas"]:
-                # out["id"].append(qa["id"])
-                out["id"].append(count)
-                count+=1
-                out["title"].append(title)
-                out["context"].append(paragraph["context"])
-                out["question"].append(qa["question"])
-                out["answers"].append({
-                    "answer_start": [answer["answer_start"] for answer in qa["answers"]],
-                    "text": [answer["text"] for answer in qa["answers"]],
-                })
-
-
-    return out
-
-def process_squad_(articles):
-    out = {
-        "id": [],
-        "title": [],
-        "context": [],
-        "question": [],
-        "answers": [],
-    }
-    #print('article: ', articles)
-    print('len ', len(articles))
-    count=1
-    for title in articles:
-        #out["id"].append(count)
-        out["id"].append(id)
-        count+=1
-        #out["title"].append(item["title"])
-        #out["context"].append(item["context"])
-        #out["question"].append(item["question"])
-        #out["answers"].append({"answer_start": [answer["answer_start"] for answer in qa["answers"]],
-        #            "text": [answer["text"] for answer in item["answers"]],})
-
-    return out
 
 
 if __name__ == "__main__":
